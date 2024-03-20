@@ -20,6 +20,8 @@ let counter = -1;
 let totalCounter = 0;
 let lastData = null; // Menyimpan data terakhir
 
+let pool; // Variabel pool disimpan di luar fungsi untuk menghindari pembuatan koneksi yang berulang
+
 const getStatus = (poin) => {
   if (poin === 0) {
     counter = 0;
@@ -31,7 +33,7 @@ const getStatus = (poin) => {
   } else if (counter === maxPoin) {
     counter++;
     totalCounter++;
-    return 'Scan Barcode';
+    return 'SCAN BARCODE';
   } else {
     totalCounter++;
     return '';
@@ -40,9 +42,11 @@ const getStatus = (poin) => {
 
 const fetchData = async () => {
   try {
-    const pool = await mssql.connect(config);
+    if (!pool) {
+      pool = await mssql.connect(config);
+    }
     const request = pool.request();
-    const result = await request.query("SELECT TOP 1 DATE, NO_MC, BARCODE, COUNT FROM APS_RAW2 WHERE NO_MC = 1 ORDER BY DATE DESC");
+    const result = await request.query("SELECT TOP 1 DATE, NO_MC, BARCODE, COUNT FROM APS_RAW2 WHERE NO_MC = 5 ORDER BY DATE DESC");
     const data = result.recordset[0];
 
     // Membandingkan data sebelumnya dengan data saat ini
