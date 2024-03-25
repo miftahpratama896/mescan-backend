@@ -1,0 +1,4 @@
+Error: TypeError: Cannot read properties of null (reading 'BARCODE')
+    at fetchData_5 (D:\PRATAMA(JX2)\JX2MESCAN\mescanbackend\index.js:401:44)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async D:\PRATAMA(JX2)\JX2MESCAN\mescanbackend\index.js:449:16
