@@ -422,14 +422,12 @@ let maxPoin_5 = 11;
 let counter_5 = -1;
 let totalCounter_5 = 0;
 let lastData_5 = null; // Menyimpan data terakhir
-
+const currentTime = new Date();
+const currentHour = currentTime.getHours();
+const currentMinutes = currentTime.getMinutes();
 const getStatus_5 = (poin) => {
   // Mendapatkan waktu saat ini
-  const currentTime = new Date();
-  const currentHour = currentTime.getHours();
-  const currentMinutes = currentTime.getMinutes();
-
-  // Jika waktu saat ini adalah 07:00 atau 21:30, atur totalCounter_8 menjadi 0
+  // Jika waktu saat ini adalah 07:00 atau 21:30, atur totalCounter_5 menjadi 0
   if (
     (currentHour === 7 && currentMinutes === 0) ||
     (currentHour === 21 && currentMinutes === 30)
@@ -468,47 +466,62 @@ const fetchData_5 = async (noMC) => {
       `SELECT MODEL, COMPONENT, SIZE FROM BARCODE_CUTT WHERE BARCODE = '${data.BARCODE}'`
     );
     const additionalInfo = result2.recordset[0];
-    const hour = String(new Date().getHours()).padStart(2, "0");
-    const minutes = String(new Date().getMinutes()).padStart(2, "0");
-    const time = `${hour}:${minutes}`;
-
-    // Mendefinisikan jam yang diizinkan untuk penyisipan (ketika menit adalah 00)
-    const isAllowedTime = minutes === "00";
-
-    if (
-      totalCounter_5 === 1 ||
-      !lastData_5 ||
-      lastData_5.BARCODE !== data.BARCODE ||
-      isAllowedTime
-    ) {
-      const input = await request.query(
-        `INSERT INTO MAIN_MONITORING_CUTT (NO_MACHINE, BARCODE, DATE, HOUR, MODEL, COMPONENT, SIZE, COUNTER, TOTAL_COUNTER) 
-        VALUES (${noMC},'${
-          data.BARCODE
-        }','${new Date().toISOString()}','${time}', '${
-          additionalInfo.MODEL
-        }','${additionalInfo.COMPONENT}', '${
-          additionalInfo.SIZE
-        }', ${counter_5}, ${totalCounter_5} )`
-      );
-    } else {
-      const update = await request.query(
-        `UPDATE MAIN_MONITORING_CUTT 
-         SET 
-         COUNTER = ${counter_5}, 
-             TOTAL_COUNTER = ${totalCounter_5}
-             WHERE NO_MACHINE = ${noMC} AND BARCODE = '${data.BARCODE}' AND HOUR = (
-              SELECT MAX(HOUR) 
-              FROM MAIN_MONITORING_CUTT 
-              WHERE NO_MACHINE = ${noMC}
-          )`
-      );
-    }
 
     // Membandingkan data sebelumnya dengan data saat ini
     if (!lastData_5 || JSON.stringify(lastData_5) !== JSON.stringify(data)) {
-      lastData_5 = data; // Menyimpan data saat ini sebagai data terakhir
       const status = getStatus_5(data.COUNT);
+      const hour = String(new Date().getHours()).padStart(2, "0");
+      const minutes = String(new Date().getMinutes()).padStart(2, "0");
+      const time = `${hour}:${minutes}`;
+
+      // Mendefinisikan jam yang diizinkan untuk penyisipan (ketika menit adalah 00)
+      const isAllowedTime = currentMinutes === 25;
+
+      if (!lastData_5 || lastData_5.BARCODE !== data.BARCODE || isAllowedTime) {
+        const input = await request.query(
+          `INSERT INTO MAIN_MONITORING_CUTT (NO_MACHINE, BARCODE, DATE, HOUR, MODEL, COMPONENT, SIZE, COUNTER, TOTAL_COUNTER) 
+        VALUES (${noMC}, '${
+            data.BARCODE
+          }', '${new Date().toISOString()}', '${time}', '${
+            additionalInfo.MODEL
+          }', '${additionalInfo.COMPONENT}', '${
+            additionalInfo.SIZE
+          }', ${counter_5}, (SELECT ISNULL(MAX(TOTAL_COUNTER), 0) FROM MAIN_MONITORING_CUTT WHERE NO_MACHINE = ${noMC}))
+        `
+        );
+      }
+      if (counter_5 != 0) {
+        const update = await request.query(
+          `UPDATE MAIN_MONITORING_CUTT 
+       SET 
+       COUNTER = ${counter_5}, 
+           TOTAL_COUNTER = TOTAL_COUNTER + 1
+           WHERE NO_MACHINE = ${noMC} AND BARCODE = '${data.BARCODE}' AND HOUR = (
+            SELECT MAX(HOUR) 
+            FROM MAIN_MONITORING_CUTT 
+            WHERE NO_MACHINE = ${noMC}
+        )`
+        );
+      }
+      if (new Date().getHours() === 11 && new Date().getMinutes() === 22) {
+        const input = await request.query(
+          `INSERT INTO MAIN_MONITORING_CUTT (NO_MACHINE, BARCODE, DATE, HOUR, MODEL, COMPONENT, SIZE, COUNTER, TOTAL_COUNTER) 
+        VALUES (${noMC}, '${
+            data.BARCODE
+          }', '${new Date().toISOString()}', '${time}', '${
+            additionalInfo.MODEL
+          }', '${additionalInfo.COMPONENT}', '${
+            additionalInfo.SIZE
+          }', ${counter_5}, 0)
+        `
+        );
+      }
+      lastData_5 = data; // Menyimpan data saat ini sebagai data terakhir
+      // Query ketiga
+      const result3 = await request.query(
+        `SELECT TOTAL_COUNTER FROM MAIN_MONITORING_CUTT WHERE NO_MACHINE = ${noMC} AND BARCODE = '${data.BARCODE}' ORDER BY TOTAL_COUNTER DESC`
+      );
+      const additionalInfo3 = result3.recordset[0];
 
       return {
         ...data,
@@ -516,6 +529,7 @@ const fetchData_5 = async (noMC) => {
         Counter: counter_5,
         TotalCounter: totalCounter_5,
         AdditionalInfo: additionalInfo,
+        AdditionalInfo3: additionalInfo3,
       };
     } else {
       return null; // Mengembalikan null jika data sama dengan data sebelumnya
@@ -527,7 +541,7 @@ const fetchData_5 = async (noMC) => {
 };
 
 app.get("/data5", async (req, res) => {
-  const data = await fetchData_5(5); // Menggunakan fetchData_5 dan memberikan argumen 2
+  const data = await fetchData_5(5); // Menggunakan fetchData_5 dan memberikan argumen 5
   if (data) {
     res.json({ ...data, Counter: counter_5, TotalCounter: totalCounter_5 }); // Menggunakan counter_5 dan totalCounter_5
   } else {
