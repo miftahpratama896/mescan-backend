@@ -74,7 +74,7 @@ const fetchData_5 = async (noMC) => {
     );
     const monitoring_size_data = result_monitoring_size.recordset[0];
 
-    const checkTotalActual = await request.query(`SELECT * FROM SPK_CUTTING WHERE CUTT_PROCESS_DATE = '${yesterdayDate.toISOString()}' AND TOTAL_DAILY_PLAN = TOTAL_DAILY_ACTUAL`);
+    const checkTotalActual = await request.query(`SELECT * FROM SPK_CUTTING WHERE CUTT_PROCESS_DATE = '${yesterdayDate.toISOString()}' AND TOTAL_DAILY_PLAN = TOTAL_DAILY_ACTUAL AND MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}' AND MATERIAL = '${additionalInfo.MATERIAL}'`  );
 
     const checkTotalActualData = checkTotalActual.recordset[0];
 
@@ -90,8 +90,10 @@ const fetchData_5 = async (noMC) => {
 
 
       if (!checkTotalActualData && counter_5 !== 0) {
+        // update summary jxmes
         const updateYesterday = await request.query(`UPDATE SPK_CUTTING SET TOTAL_DAILY_ACTUAL = TOTAL_DAILY_ACTUAL + 1 WHERE CUTT_PROCESS_DATE = '${yesterdayDate.toISOString()}' AND
         MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}'`)
+
         if (!monitoring_sizeYesterday_data) {
           // Jika tidak ada data dengan BARCODE yang sama pada tanggal hari ini, jalankan query input
           const input = await request.query(
@@ -107,8 +109,10 @@ const fetchData_5 = async (noMC) => {
         }
       } 
       if (checkTotalActualData && counter_5 !== 0) {
+        // update summary jxmes
         const updateToday = await request.query(`UPDATE SPK_CUTTING SET TOTAL_DAILY_ACTUAL = TOTAL_DAILY_ACTUAL + 1 WHERE CUTT_PROCESS_DATE = '${date.toISOString()}' AND
         MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}'`)
+
         if (!monitoring_size_data) {
           // Jika tidak ada data dengan BARCODE yang sama pada tanggal hari ini, jalankan query input
           const input = await request.query(
@@ -124,39 +128,7 @@ const fetchData_5 = async (noMC) => {
         }
       }
 
-      if (!lastData_5 || lastData_5.BARCODE !== data.BARCODE || isAllowedTime) {
-        const input = await request.query(
-          `INSERT INTO MAIN_MONITORING_CUTT (NO_MACHINE, BARCODE, DATE, HOUR, MODEL, COMPONENT, SIZE, COUNTER, TOTAL_COUNTER) 
-        VALUES (${noMC}, '${data.BARCODE
-          }', '${new Date().toISOString()}', '${time}', '${additionalInfo.MODEL
-          }', '${additionalInfo.COMPONENT}', '${additionalInfo.SIZE
-          }', ${counter_5}, (SELECT ISNULL(MAX(TOTAL_COUNTER), 0) FROM MAIN_MONITORING_CUTT WHERE NO_MACHINE = ${noMC}))
-        `
-        );
-      }
-      if (counter_5 !== 0) {
-        const update = await request.query(
-          `UPDATE MAIN_MONITORING_CUTT 
-       SET 
-       COUNTER = ${counter_5}, 
-           TOTAL_COUNTER = TOTAL_COUNTER + 1
-           WHERE NO_MACHINE = ${noMC} AND BARCODE = '${data.BARCODE}' AND HOUR = (
-            SELECT MAX(HOUR) 
-            FROM MAIN_MONITORING_CUTT 
-            WHERE NO_MACHINE = ${noMC}
-        )`
-        );
-      }
-      if (new Date().getHours() === 11 && new Date().getMinutes() === 22) {
-        const input = await request.query(
-          `INSERT INTO MAIN_MONITORING_CUTT (NO_MACHINE, BARCODE, DATE, HOUR, MODEL, COMPONENT, SIZE, COUNTER, TOTAL_COUNTER) 
-        VALUES (${noMC}, '${data.BARCODE
-          }', '${new Date().toISOString()}', '${time}', '${additionalInfo.MODEL
-          }', '${additionalInfo.COMPONENT}', '${additionalInfo.SIZE
-          }', ${counter_5}, 0)
-        `
-        );
-      }
+      
       lastData_5 = data; // Menyimpan data saat ini sebagai data terakhir
       // Query ketiga
       const result3 = await request.query(
@@ -164,14 +136,25 @@ const fetchData_5 = async (noMC) => {
       );
       const additionalInfo3 = result3.recordset[0];
 
+      const totalCounter = await request.query(
+        `SELECT CUTT_PROCESS_DATE, TOTAL_DAILY_ACTUAL FROM SPK_CUTTING WHERE CUTT_PROCESS_DATE = '${date.toISOString()}' AND MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}' AND MATERIAL = '${additionalInfo.MATERIAL}'`
+      );
+      const totalCounterData = totalCounter.recordset[0];
+
+      const totalCounterYesterday = await request.query(
+        `SELECT CUTT_PROCESS_DATE, TOTAL_DAILY_ACTUAL FROM SPK_CUTTING WHERE CUTT_PROCESS_DATE = '${yesterdayDate.toISOString()}' AND MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}' AND MATERIAL = '${additionalInfo.MATERIAL}'`
+      );
+      const totalCounterYesterdayData = totalCounterYesterday.recordset[0];
+
       return {
         ...data,
         Status: status,
         Counter: counter_5,
-        TotalCounter: totalCounter_5,
+        TotalCounter: (!checkTotalActualData && counter_5 !== 0) ? totalCounterYesterdayData : totalCounterData,
         AdditionalInfo: additionalInfo,
         AdditionalInfo3: additionalInfo3,
       };
+      
     } else {
       return null; // Mengembalikan null jika data sama dengan data sebelumnya
     }
@@ -192,7 +175,7 @@ wss.on("connection", (ws) => {
       if (data) {
         wss.clients.forEach(client => {
           if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ ...data, Counter: counter_5, TotalCounter: totalCounter_5 }));
+            client.send(JSON.stringify({ ...data, Counter: counter_5 }));
           }
         });
       }
