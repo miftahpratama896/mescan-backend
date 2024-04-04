@@ -74,9 +74,97 @@ const fetchData_5 = async (noMC) => {
     );
     const monitoring_size_data = result_monitoring_size.recordset[0];
 
-    const checkTotalActual = await request.query(`SELECT * FROM SPK_CUTTING WHERE CUTT_PROCESS_DATE = '${yesterdayDate.toISOString()}' AND TOTAL_DAILY_PLAN = TOTAL_DAILY_ACTUAL AND MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}' AND MATERIAL = '${additionalInfo.MATERIAL}'`  );
+    const checkTotalActual = await request.query(`SELECT * FROM [JX2ENG].[dbo].[SPK_CUTTING] WHERE CUTT_PROCESS_DATE = '${yesterdayDate.toISOString()}' AND TOTAL_DAILY_PLAN != TOTAL_DAILY_ACTUAL AND
+    MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}' AND LINE = ${data.CELL}`);
 
     const checkTotalActualData = checkTotalActual.recordset[0];
+
+    const checkTotalActualNow = await request.query(`SELECT * FROM [JX2ENG].[dbo].[SPK_CUTTING] WHERE CUTT_PROCESS_DATE = '${date.toISOString()}' AND TOTAL_DAILY_PLAN != TOTAL_DAILY_ACTUAL AND
+    MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}' AND LINE = ${data.CELL}`);
+
+    const checkTotalActualNowData = checkTotalActualNow.recordset[0];
+
+    // Fetch TOTAL ACTUAL by Today Date
+    const totalCounter = await request.query(
+      `SELECT CUTT_PROCESS_DATE, TOTAL_DAILY_ACTUAL FROM SPK_CUTTING WHERE CUTT_PROCESS_DATE = '${date.toISOString()}' AND COMPONENT = '${additionalInfo.COMPONENT}' AND MATERIAL = '${additionalInfo.MATERIAL}'`
+    );
+    const totalCounterData = totalCounter.recordset[0];
+    // Fetch TOTAL ACTUAL by Yesterday Date
+    const totalCounterYesterday = await request.query(
+      `SELECT CUTT_PROCESS_DATE, TOTAL_DAILY_ACTUAL FROM SPK_CUTTING WHERE CUTT_PROCESS_DATE = '${yesterdayDate.toISOString()}' AND COMPONENT = '${additionalInfo.COMPONENT}' AND MATERIAL = '${additionalInfo.MATERIAL}'`
+    );
+    const totalCounterYesterdayData = totalCounterYesterday.recordset[0];
+
+    if (checkTotalActualData) {
+      hasil = totalCounterYesterdayData
+    }
+    if (checkTotalActualNowData) {
+      hasil = totalCounterData
+    }
+
+    // Fetch Size based on No MC, Barcode and Today Date
+    const BarcodePerMachine = await request.query(
+      `DECLARE @columns NVARCHAR(MAX), @sql NVARCHAR(MAX);
+      
+      SELECT @columns = STRING_AGG(QUOTENAME([SIZE]), ', ')
+      FROM (
+          SELECT DISTINCT [SIZE]
+          FROM [dbo].[MAIN_MONITORING_SIZE_CUTT]
+      ) AS sizes;
+      
+      SET @sql = '
+      SELECT *
+      FROM (
+          SELECT [BARCODE], [TOTAL_COUNTER_BARCODE], [SIZE]
+          FROM [dbo].[MAIN_MONITORING_SIZE_CUTT]
+          WHERE [DATE] = @dateParameter AND [NO_MACHINE] = @machineParameter
+          AND [BARCODE] = @barcodeParameter
+      ) AS SourceTable
+      PIVOT (
+          MAX([TOTAL_COUNTER_BARCODE])
+          FOR [SIZE] IN (' + @columns + ')
+      ) AS PivotTable;';
+    
+      EXEC sp_executesql @sql, N'@dateParameter DATE, @machineParameter NVARCHAR(255), @barcodeParameter NVARCHAR(255)',
+          @dateParameter = '${date.toISOString()}', @machineParameter = '${noMC}', @barcodeParameter = '${data.BARCODE}';`
+    );
+    const BarcodePerMachineData = BarcodePerMachine.recordset[0];
+    
+
+     // Fetch Size based on No MC, Barcode and Yesterday Date
+     const BarcodePerMachineYesterday = await request.query(
+      `DECLARE @columns NVARCHAR(MAX), @sql NVARCHAR(MAX);
+      
+      SELECT @columns = STRING_AGG(QUOTENAME([SIZE]), ', ')
+      FROM (
+          SELECT DISTINCT [SIZE]
+          FROM [dbo].[MAIN_MONITORING_SIZE_CUTT]
+      ) AS sizes;
+      
+      SET @sql = '
+      SELECT *
+      FROM (
+          SELECT [BARCODE], [TOTAL_COUNTER_BARCODE], [SIZE]
+          FROM [dbo].[MAIN_MONITORING_SIZE_CUTT]
+          WHERE [DATE] = @dateParameter AND [NO_MACHINE] = @machineParameter
+          AND [BARCODE] = @barcodeParameter
+      ) AS SourceTable
+      PIVOT (
+          MAX([TOTAL_COUNTER_BARCODE])
+          FOR [SIZE] IN (' + @columns + ')
+      ) AS PivotTable;';
+    
+      EXEC sp_executesql @sql, N'@dateParameter DATE, @machineParameter NVARCHAR(255), @barcodeParameter NVARCHAR(255)',
+          @dateParameter = '${yesterdayDate.toISOString()}', @machineParameter = '${noMC}', @barcodeParameter = '${data.BARCODE}';`
+    );
+    const BarcodePerMachineYesterdayData = BarcodePerMachineYesterday.recordset[0];
+
+    if (checkTotalActualData) {
+      MonitoringBarcode = BarcodePerMachineYesterdayData
+    }
+    if (checkTotalActualNowData) {
+      MonitoringBarcode = BarcodePerMachineData
+    }
 
     // Membandingkan data sebelumnya dengan data saat ini
     if (!lastData_5 || JSON.stringify(lastData_5) !== JSON.stringify(data)) {
@@ -89,10 +177,10 @@ const fetchData_5 = async (noMC) => {
       const isAllowedTime = currentMinutes === 25;
 
 
-      if (!checkTotalActualData && counter_5 !== 0) {
+      if (checkTotalActualData && counter_5 !== 0) {
         // update summary jxmes
         const updateYesterday = await request.query(`UPDATE SPK_CUTTING SET TOTAL_DAILY_ACTUAL = TOTAL_DAILY_ACTUAL + 1 WHERE CUTT_PROCESS_DATE = '${yesterdayDate.toISOString()}' AND
-        MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}'`)
+        MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}' AND LINE = ${data.CELL}`)
 
         if (!monitoring_sizeYesterday_data) {
           // Jika tidak ada data dengan BARCODE yang sama pada tanggal hari ini, jalankan query input
@@ -107,11 +195,11 @@ const fetchData_5 = async (noMC) => {
             WHERE BARCODE = '${data.BARCODE}' AND DATE = '${yesterdayDate.toISOString()}'`
           );
         }
-      } 
-      if (checkTotalActualData && counter_5 !== 0) {
+      }
+      if (checkTotalActualNowData && counter_5 !== 0) {
         // update summary jxmes
         const updateToday = await request.query(`UPDATE SPK_CUTTING SET TOTAL_DAILY_ACTUAL = TOTAL_DAILY_ACTUAL + 1 WHERE CUTT_PROCESS_DATE = '${date.toISOString()}' AND
-        MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}'`)
+        MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}' AND LINE = ${data.CELL}`)
 
         if (!monitoring_size_data) {
           // Jika tidak ada data dengan BARCODE yang sama pada tanggal hari ini, jalankan query input
@@ -128,7 +216,7 @@ const fetchData_5 = async (noMC) => {
         }
       }
 
-      
+
       lastData_5 = data; // Menyimpan data saat ini sebagai data terakhir
       // Query ketiga
       const result3 = await request.query(
@@ -136,25 +224,16 @@ const fetchData_5 = async (noMC) => {
       );
       const additionalInfo3 = result3.recordset[0];
 
-      const totalCounter = await request.query(
-        `SELECT CUTT_PROCESS_DATE, TOTAL_DAILY_ACTUAL FROM SPK_CUTTING WHERE CUTT_PROCESS_DATE = '${date.toISOString()}' AND MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}' AND MATERIAL = '${additionalInfo.MATERIAL}'`
-      );
-      const totalCounterData = totalCounter.recordset[0];
-
-      const totalCounterYesterday = await request.query(
-        `SELECT CUTT_PROCESS_DATE, TOTAL_DAILY_ACTUAL FROM SPK_CUTTING WHERE CUTT_PROCESS_DATE = '${yesterdayDate.toISOString()}' AND MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}' AND MATERIAL = '${additionalInfo.MATERIAL}'`
-      );
-      const totalCounterYesterdayData = totalCounterYesterday.recordset[0];
 
       return {
         ...data,
         Status: status,
         Counter: counter_5,
-        TotalCounter: (!checkTotalActualData && counter_5 !== 0) ? totalCounterYesterdayData : totalCounterData,
+        TotalCounter: hasil,
         AdditionalInfo: additionalInfo,
-        AdditionalInfo3: additionalInfo3,
+        AdditionalInfo3: MonitoringBarcode,
       };
-      
+
     } else {
       return null; // Mengembalikan null jika data sama dengan data sebelumnya
     }
