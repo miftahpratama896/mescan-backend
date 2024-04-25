@@ -84,6 +84,7 @@ const fetchData_5 = async (noMC) => {
 
     const checkTotalActualNowData = checkTotalActualNow.recordset[0];
 
+
     // Fetch TOTAL ACTUAL by Today Date
     const totalCounter = await request.query(
       `SELECT CUTT_PROCESS_DATE, TOTAL_DAILY_ACTUAL FROM SPK_CUTTING WHERE CUTT_PROCESS_DATE = '${date.toISOString()}' AND COMPONENT = '${additionalInfo.COMPONENT}' AND MATERIAL = '${additionalInfo.MATERIAL}'`
@@ -95,10 +96,15 @@ const fetchData_5 = async (noMC) => {
     );
     const totalCounterYesterdayData = totalCounterYesterday.recordset[0];
 
+    const checkTotalActualNow2 = await request.query(`SELECT * FROM [JX2ENG].[dbo].[SPK_CUTTING] WHERE CUTT_PROCESS_DATE = '${date.toISOString()}' AND
+    MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}' AND LINE = ${data.CELL}`);
+
+    const checkTotalActualNowData2 = checkTotalActualNow2.recordset[0];
+
     if (checkTotalActualData) {
       hasil = totalCounterYesterdayData
     }
-    if (checkTotalActualNowData) {
+    else if (checkTotalActualNowData) {
       hasil = totalCounterData
     }
 
@@ -118,7 +124,7 @@ const fetchData_5 = async (noMC) => {
           SELECT [BARCODE], [TOTAL_COUNTER_BARCODE], [SIZE]
           FROM [dbo].[MAIN_MONITORING_SIZE_CUTT]
           WHERE [DATE] = @dateParameter AND [NO_MACHINE] = @machineParameter
-          AND [BARCODE] = @barcodeParameter
+          AND [BARCODE] = @barcodeParameter AND [TOTAL_COUNTER_BARCODE] <> 0
       ) AS SourceTable
       PIVOT (
           MAX([TOTAL_COUNTER_BARCODE])
@@ -129,10 +135,10 @@ const fetchData_5 = async (noMC) => {
           @dateParameter = '${date.toISOString()}', @machineParameter = '${noMC}', @barcodeParameter = '${data.BARCODE}';`
     );
     const BarcodePerMachineData = BarcodePerMachine.recordset[0];
-    
 
-     // Fetch Size based on No MC, Barcode and Yesterday Date
-     const BarcodePerMachineYesterday = await request.query(
+
+    // Fetch Size based on No MC, Barcode and Yesterday Date
+    const BarcodePerMachineYesterday = await request.query(
       `DECLARE @columns NVARCHAR(MAX), @sql NVARCHAR(MAX);
       
       SELECT @columns = STRING_AGG(QUOTENAME([SIZE]), ', ')
@@ -147,7 +153,7 @@ const fetchData_5 = async (noMC) => {
           SELECT [BARCODE], [TOTAL_COUNTER_BARCODE], [SIZE]
           FROM [dbo].[MAIN_MONITORING_SIZE_CUTT]
           WHERE [DATE] = @dateParameter AND [NO_MACHINE] = @machineParameter
-          AND [BARCODE] = @barcodeParameter
+          AND [BARCODE] = @barcodeParameter AND [TOTAL_COUNTER_BARCODE] <> 0
       ) AS SourceTable
       PIVOT (
           MAX([TOTAL_COUNTER_BARCODE])
@@ -162,7 +168,7 @@ const fetchData_5 = async (noMC) => {
     if (checkTotalActualData) {
       MonitoringBarcode = BarcodePerMachineYesterdayData
     }
-    if (checkTotalActualNowData) {
+    else if (checkTotalActualNowData2) {
       MonitoringBarcode = BarcodePerMachineData
     }
 
@@ -181,7 +187,6 @@ const fetchData_5 = async (noMC) => {
         // update summary jxmes
         const updateYesterday = await request.query(`UPDATE SPK_CUTTING SET TOTAL_DAILY_ACTUAL = TOTAL_DAILY_ACTUAL + 1 WHERE CUTT_PROCESS_DATE = '${yesterdayDate.toISOString()}' AND
         MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}' AND LINE = ${data.CELL}`)
-
         if (!monitoring_sizeYesterday_data) {
           // Jika tidak ada data dengan BARCODE yang sama pada tanggal hari ini, jalankan query input
           const input = await request.query(
@@ -196,27 +201,26 @@ const fetchData_5 = async (noMC) => {
           );
         }
       }
-      if (checkTotalActualNowData && counter_5 !== 0) {
+      else if (checkTotalActualNowData && counter_5 !== 0) {
         // update summary jxmes
         const updateToday = await request.query(`UPDATE SPK_CUTTING SET TOTAL_DAILY_ACTUAL = TOTAL_DAILY_ACTUAL + 1 WHERE CUTT_PROCESS_DATE = '${date.toISOString()}' AND
         MODEL = '${additionalInfo.MODEL}' AND COMPONENT = '${additionalInfo.COMPONENT}' AND LINE = ${data.CELL}`)
 
-        if (!monitoring_size_data) {
-          // Jika tidak ada data dengan BARCODE yang sama pada tanggal hari ini, jalankan query input
-          const input = await request.query(
-            `INSERT INTO MAIN_MONITORING_SIZE_CUTT (LINE, NO_MACHINE, BARCODE, SIZE, TOTAL_COUNTER_BARCODE, DATE) 
-            VALUES (${data.CELL},${data.NO_MC}, '${data.BARCODE}', '${additionalInfo.SIZE}', 1, '${date.toISOString()}')`
-          );
-        } else {
-          // Jika sudah ada data dengan BARCODE yang sama pada tanggal hari ini, jalankan query update
-          const update = await request.query(
-            `UPDATE MAIN_MONITORING_SIZE_CUTT SET TOTAL_COUNTER_BARCODE = TOTAL_COUNTER_BARCODE + 1 
-            WHERE BARCODE = '${data.BARCODE}' AND DATE = '${date.toISOString()}'`
-          );
-        }
       }
 
-
+      if (!monitoring_size_data) {
+        // Jika tidak ada data dengan BARCODE yang sama pada tanggal hari ini, jalankan query input
+        const input = await request.query(
+          `INSERT INTO MAIN_MONITORING_SIZE_CUTT (LINE, NO_MACHINE, BARCODE, SIZE, TOTAL_COUNTER_BARCODE, DATE) 
+          VALUES (${data.CELL},${data.NO_MC}, '${data.BARCODE}', '${additionalInfo.SIZE}', 1, '${date.toISOString()}')`
+        );
+      } else {
+        // Jika sudah ada data dengan BARCODE yang sama pada tanggal hari ini, jalankan query update
+        const update = await request.query(
+          `UPDATE MAIN_MONITORING_SIZE_CUTT SET TOTAL_COUNTER_BARCODE = TOTAL_COUNTER_BARCODE + 1 
+          WHERE BARCODE = '${data.BARCODE}' AND DATE = '${date.toISOString()}'`
+        );
+      }
       lastData_5 = data; // Menyimpan data saat ini sebagai data terakhir
       // Query ketiga
       const result3 = await request.query(
@@ -250,7 +254,7 @@ wss.on("connection", (ws) => {
 
   if (!intervalId) {
     intervalId = setInterval(async () => {
-      const data = await fetchData_5(5);
+      const data = await fetchData_5(11);
       if (data) {
         wss.clients.forEach(client => {
           if (client.readyState === WebSocket.OPEN) {
@@ -332,6 +336,34 @@ app.get('/barcode-cutt', async (req, res) => {
     res.status(500).send('Terjadi kesalahan saat memproses permintaan.');
   }
 });
+
+app.get('/spk-cutt', async (req, res) => {
+  try {
+      // Membuat koneksi database
+      await sql.connect(config);
+
+      // Query SQL untuk mengambil data
+      const result = await sql.query(`
+          SELECT [LINE]
+              ,[STYLE]
+              ,[MODEL]
+              ,[COMPONENT]
+              ,[MATERIAL]
+              ,[CUTT_PROCESS_DATE]
+              ,[TOTAL_DAILY_PLAN]
+              ,[TOTAL_DAILY_ACTUAL]
+          FROM [JX2ENG].[dbo].[SPK_CUTTING]
+      `);
+
+      // Mengirimkan data sebagai respons
+      res.json(result.recordset);
+  } catch (err) {
+      // Menangani kesalahan jika ada
+      console.error('Error occurred:', err);
+      res.status(500).send('Internal Server Error');
+  } 
+});
+
 
 server.listen(PORT, () => {
   console.log(`WebSocket server is running on port ${PORT}`);
